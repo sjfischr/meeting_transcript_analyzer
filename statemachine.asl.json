@@ -1,0 +1,182 @@
+{
+    "Comment": "GRiST Meeting Processing Pipeline with Sliding Window Chunking",
+    "StartAt": "ChunkTranscript",
+    "States": {
+        "ChunkTranscript": {
+            "Type": "Task",
+            "Resource": "${ChunkTranscriptArn}",
+            "Comment": "Split large transcripts into overlapping chunks",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2
+                }
+            ],
+            "Next": "ProcessChunks"
+        },
+        "ProcessChunks": {
+            "Type": "Map",
+            "Comment": "Process each chunk in parallel (limited concurrency to avoid throttling)",
+            "ItemsPath": "$.chunks",
+            "MaxConcurrency": 2,
+            "ResultPath": "$.chunk_results",
+            "Parameters": {
+                "meeting_id.$": "$.meeting_id",
+                "chunk.$": "$$.Map.Item.Value"
+            },
+            "Iterator": {
+                "StartAt": "PreprocessTurns",
+                "States": {
+                    "PreprocessTurns": {
+                        "Type": "Task",
+                        "Resource": "${PreprocessTurnsArn}",
+                        "Parameters": {
+                            "meeting_id.$": "$.meeting_id",
+                            "input_key.$": "$.chunk.input_key",
+                            "output_key.$": "$.chunk.output_key",
+                            "chunk_index.$": "$.chunk.chunk_index"
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "States.TaskFailed"
+                                ],
+                                "IntervalSeconds": 10,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 2.0,
+                                "Comment": "Retry with exponential backoff for throttling and transient errors"
+                            },
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 3,
+                                "BackoffRate": 2.0
+                            }
+                        ],
+                        "End": true
+                    }
+                }
+            },
+            "Next": "MergeChunks"
+        },
+        "MergeChunks": {
+            "Type": "Task",
+            "Resource": "${MergeChunksArn}",
+            "Comment": "Intelligently merge overlapping chunks",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2
+                }
+            ],
+            "Next": "ParallelProcessing"
+        },
+        "ParallelProcessing": {
+            "Type": "Parallel",
+            "Branches": [
+                {
+                    "StartAt": "GroupQA",
+                    "States": {
+                        "GroupQA": {
+                            "Type": "Task",
+                            "Resource": "${GroupQAArn}",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.TaskFailed"
+                                    ],
+                                    "IntervalSeconds": 10,
+                                    "MaxAttempts": 5,
+                                    "BackoffRate": 2.0
+                                }
+                            ],
+                            "End": true
+                        }
+                    }
+                },
+                {
+                    "StartAt": "MinutesActions",
+                    "States": {
+                        "MinutesActions": {
+                            "Type": "Task",
+                            "Resource": "${MinutesActionsArn}",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.TaskFailed"
+                                    ],
+                                    "IntervalSeconds": 10,
+                                    "MaxAttempts": 5,
+                                    "BackoffRate": 2.0
+                                }
+                            ],
+                            "End": true
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Summarize",
+                    "States": {
+                        "Summarize": {
+                            "Type": "Task",
+                            "Resource": "${SummarizeArn}",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.TaskFailed"
+                                    ],
+                                    "IntervalSeconds": 10,
+                                    "MaxAttempts": 5,
+                                    "BackoffRate": 2.0
+                                }
+                            ],
+                            "End": true
+                        }
+                    }
+                },
+                {
+                    "StartAt": "MakeIcs",
+                    "States": {
+                        "MakeIcs": {
+                            "Type": "Task",
+                            "Resource": "${MakeIcsArn}",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.TaskFailed"
+                                    ],
+                                    "IntervalSeconds": 10,
+                                    "MaxAttempts": 5,
+                                    "BackoffRate": 2.0
+                                }
+                            ],
+                            "End": true
+                        }
+                    }
+                }
+            ],
+            "Next": "MakeManifest"
+        },
+        "MakeManifest": {
+            "Type": "Task",
+            "Resource": "${MakeManifestArn}",
+            "End": true
+        }
+    }
+}

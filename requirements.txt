@@ -1,0 +1,5 @@
+boto3==1.35.0
+botocore==1.35.0
+jsonschema==4.23.0
+pytest==8.3.0
+pytest-mock==3.14.0

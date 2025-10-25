@@ -1,0 +1,302 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  grist-meeting-pipeline
+  
+  SAM Template for GRiST meeting transcript processing pipeline using Step Functions and Bedrock
+
+# Parameters
+Parameters:
+  ArtifactsBucket:
+    Type: String
+    Default: "mtg-analyzer-grist-2210"
+    Description: S3 bucket name for storing meeting artifacts
+  
+  TimeZone:
+    Type: String
+    Default: "America/New_York"
+    Description: Time zone for calendar events
+  
+  InferenceProfileArn:
+    Type: String
+    Default: "arn:aws:bedrock:us-east-1:918221680168:inference-profile/global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    Description: Bedrock inference profile ARN
+
+# Global configuration
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - arm64
+    MemorySize: 512
+    Timeout: 900
+    Environment:
+      Variables:
+        BUCKET: !Ref ArtifactsBucket
+        REGION: !Ref AWS::Region
+        TIME_ZONE: !Ref TimeZone
+        INFERENCE_PROFILE_ARN: !Ref InferenceProfileArn
+
+Resources:
+  # Lambda Functions
+  ChunkTranscriptFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.chunk_transcript.lambda_handler
+      MemorySize: 1024
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: 
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  MergeChunksFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.merge_chunks.lambda_handler
+      MemorySize: 1024
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: 
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  PreprocessTurnsFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.preprocess_turns.lambda_handler
+      MemorySize: 1024
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: 
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Ref InferenceProfileArn
+                - "arn:aws:bedrock:*::foundation-model/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  GroupQAFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.group_qa.lambda_handler
+      MemorySize: 1024
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: 
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Ref InferenceProfileArn
+                - "arn:aws:bedrock:*::foundation-model/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  MinutesActionsFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.minutes_actions.lambda_handler
+      MemorySize: 1024
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: 
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Ref InferenceProfileArn
+                - "arn:aws:bedrock:*::foundation-model/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  SummarizeFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.summarize.lambda_handler
+      MemorySize: 512
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: 
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Ref InferenceProfileArn
+                - "arn:aws:bedrock:*::foundation-model/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  MakeICSFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.make_ics.lambda_handler
+      MemorySize: 512
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: 
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Ref InferenceProfileArn
+                - "arn:aws:bedrock:*::foundation-model/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  MakeManifestFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.make_manifest.lambda_handler
+      MemorySize: 512
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: 
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  # Lambda function to trigger Step Functions from S3 events
+  TriggerPipelineFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.trigger_pipeline.lambda_handler
+      MemorySize: 256
+      Timeout: 60
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref MeetingPipelineStateMachine
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource: !Ref MeetingPipelineStateMachine
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+      Events:
+        S3Event:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.s3
+              detail-type:
+                - Object Created
+              detail:
+                bucket:
+                  name:
+                    - !Ref ArtifactsBucket
+                object:
+                  key:
+                    - wildcard: "*.txt"
+    Metadata:
+      BuildMethod: python3.12
+
+  # Step Functions State Machine
+  MeetingPipelineStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri: statemachine.asl.json
+      DefinitionSubstitutions:
+        ChunkTranscriptArn: !GetAtt ChunkTranscriptFn.Arn
+        MergeChunksArn: !GetAtt MergeChunksFn.Arn
+        PreprocessTurnsArn: !GetAtt PreprocessTurnsFn.Arn
+        GroupQAArn: !GetAtt GroupQAFn.Arn
+        MinutesActionsArn: !GetAtt MinutesActionsFn.Arn
+        SummarizeArn: !GetAtt SummarizeFn.Arn
+        MakeIcsArn: !GetAtt MakeICSFn.Arn
+        MakeManifestArn: !GetAtt MakeManifestFn.Arn
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !GetAtt ChunkTranscriptFn.Arn
+                - !GetAtt MergeChunksFn.Arn
+                - !GetAtt PreprocessTurnsFn.Arn
+                - !GetAtt GroupQAFn.Arn
+                - !GetAtt MinutesActionsFn.Arn
+                - !GetAtt SummarizeFn.Arn
+                - !GetAtt MakeICSFn.Arn
+                - !GetAtt MakeManifestFn.Arn
+
+Outputs:
+  MeetingPipelineStateMachineArn:
+    Description: "Step Functions State Machine ARN for Meeting Pipeline"
+    Value: !Ref MeetingPipelineStateMachine
+    Export:
+      Name: !Sub "${AWS::StackName}-StateMachineArn"
+  
+  ArtifactsBucketName:
+    Description: "S3 Bucket for meeting artifacts"
+    Value: !Ref ArtifactsBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-ArtifactsBucket"
