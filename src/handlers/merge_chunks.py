@@ -196,6 +196,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Initialize S3 client
         s3_client = S3Client()
+
+        def compute_prefix(key: str) -> str:
+            return f"{key.rsplit('/', 1)[0]}/" if '/' in key else ""
         
         # Check if transcript was chunked
         if not event.get('chunked', False):
@@ -203,7 +206,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             logger.info("Transcript was not chunked, passing through")
             chunk_results = event.get('chunk_results', [])
             if chunk_results and len(chunk_results) > 0:
-                return chunk_results[0]
+                passthrough = chunk_results[0].copy()
+                turns_key = passthrough.get('output_key', event.get('output_key', f"meetings/{meeting_id}/01_turns.json"))
+                passthrough.setdefault('statusCode', 200)
+                passthrough.setdefault('meeting_id', meeting_id)
+                passthrough['output_key'] = turns_key
+                passthrough['turns_key'] = turns_key
+                passthrough['base_output_prefix'] = compute_prefix(turns_key)
+                passthrough.setdefault('chunk_count', 1)
+                return passthrough
             else:
                 raise ValueError("No chunk results found")
         
@@ -247,6 +258,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Write merged result
         output_key = event.get('output_key', f"meetings/{meeting_id}/01_turns.json")
         s3_client.write_json_file(output_key, output)
+        base_output_prefix = compute_prefix(output_key)
         
         logger.info(f"Successfully merged {len(merged_turns)} turns from {len(chunk_results)} chunks")
         
@@ -255,7 +267,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'meeting_id': meeting_id,
             'output_key': output_key,
             'total_turns': len(merged_turns),
-            'chunk_count': len(chunk_results)
+            'chunk_count': len(chunk_results),
+            'turns_key': output_key,
+            'base_output_prefix': base_output_prefix
         }
         
     except Exception as e:

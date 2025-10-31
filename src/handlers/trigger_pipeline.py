@@ -8,12 +8,15 @@ to the S3 bucket and starts the processing pipeline automatically.
 import json
 import os
 import logging
+import re
 from typing import Dict, Any
 from datetime import datetime
+from urllib.parse import unquote_plus
+
 import boto3
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging for Lambda (ensure INFO-level visibility even if root is WARNING)
+logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -54,6 +57,15 @@ def extract_meeting_info(s3_key: str) -> Dict[str, str]:
     }
 
 
+def sanitize_execution_name(meeting_id: str) -> str:
+    """Sanitize meeting_id so it can be used as Step Functions execution name."""
+    sanitized = re.sub(r"[^A-Za-z0-9\-_]+", "-", meeting_id)
+    sanitized = sanitized.strip('-')
+    if not sanitized:
+        sanitized = f"meeting-{int(datetime.utcnow().timestamp())}"
+    return sanitized[:80]
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda handler to trigger Step Functions from S3 EventBridge events.
@@ -71,14 +83,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Extract S3 details from EventBridge event
         detail = event.get('detail', {})
         bucket_name = detail.get('bucket', {}).get('name')
-        s3_key = detail.get('object', {}).get('key')
+        raw_key = detail.get('object', {}).get('key')
         
-        if not bucket_name or not s3_key:
+        if not bucket_name or not raw_key:
             logger.error("Missing bucket or key in event")
             return {
                 'statusCode': 400,
                 'error': 'Missing required S3 information in event'
             }
+
+        s3_key = unquote_plus(raw_key)
+        if raw_key != s3_key:
+            logger.info("Decoded S3 key from '%s' to '%s'", raw_key, s3_key)
         
         logger.info(f"Processing file: s3://{bucket_name}/{s3_key}")
         
@@ -110,7 +126,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Use deterministic execution name based ONLY on meeting_id for idempotency
         # This prevents duplicate executions if EventBridge sends multiple events
         # Step Functions will reject duplicate names with ExecutionAlreadyExists error
-        execution_name = meeting_id.replace('/', '-').replace('_', '-')[:80]  # Max 80 chars, alphanumeric+hyphen
+        execution_name = sanitize_execution_name(meeting_id)
         
         try:
             response = sfn_client.start_execution(

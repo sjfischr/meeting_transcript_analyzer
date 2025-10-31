@@ -20,6 +20,61 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+ALLOWED_TURN_TYPES = {"question", "answer", "followup", "monologue", "housekeeping"}
+TURN_TYPE_SYNONYMS = {
+    "statement": "monologue",
+    "comment": "monologue",
+    "discussion": "monologue",
+    "context": "monologue",
+    "other": "monologue",
+    "response": "answer",
+    "reply": "answer",
+    "follow-up": "followup",
+    "follow up": "followup",
+    "questioning": "question"
+}
+
+
+def normalize_turn_output(payload: Dict[str, Any]) -> None:
+    """Normalize model output to match expected schema values."""
+    turns: Any = payload.get("turns")  # type: ignore[assignment]
+    if not isinstance(turns, list):
+        return
+
+    for turn in turns:
+        if not isinstance(turn, dict):
+            continue
+
+        raw_type = turn.get("type")
+        normalized_type = None
+        if isinstance(raw_type, str):
+            type_key = raw_type.strip().lower()
+            if type_key in ALLOWED_TURN_TYPES:
+                normalized_type = type_key
+            elif type_key in TURN_TYPE_SYNONYMS:
+                normalized_type = TURN_TYPE_SYNONYMS[type_key]
+            else:
+                logger.warning("Unknown turn type '%s' - defaulting to 'monologue'", raw_type)
+                normalized_type = "monologue"
+        else:
+            logger.debug("Turn missing string type value; defaulting to 'monologue'")
+            normalized_type = "monologue"
+
+        turn["type"] = normalized_type
+
+        if "question_likelihood" in turn:
+            try:
+                likelihood = float(turn["question_likelihood"])
+                if likelihood < 0:
+                    likelihood = 0.0
+                elif likelihood > 1:
+                    likelihood = 1.0
+                turn["question_likelihood"] = likelihood
+            except (TypeError, ValueError):
+                logger.warning("Invalid question_likelihood '%s' - defaulting to 0.0", turn.get("question_likelihood"))
+                turn["question_likelihood"] = 0.0
+
+
 def load_prompt_template() -> str:
     """Load the turns extraction prompt template."""
     # TODO: Load from S3 or embed here
@@ -87,8 +142,9 @@ Output valid JSON following the schema specified in the system prompt.
             user_prompt=user_prompt,
             max_tokens=100000  # Increased for large transcripts - Claude can handle up to 200k output
         )
-        
-        # Validate response structure
+
+        # Normalize and validate response structure
+        normalize_turn_output(response)
         validation_errors = validate_turns_schema(response)
         if validation_errors:
             logger.error(f"Validation errors: {validation_errors}")
