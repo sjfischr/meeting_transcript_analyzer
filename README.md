@@ -1,4 +1,4 @@
-# GRiST Meeting Pipeline
+# Meeting Transcript Analyzer Pipeline
 
 AWS SAM application for processing meeting transcripts using Step Functions, Lambda, and Amazon Bedrock.
 
