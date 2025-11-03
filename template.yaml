@@ -86,10 +86,17 @@ Resources:
         - Statement:
             - Effect: Allow
               Action:
+                - s3:ListBucket
+              Resource:
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}"
+        - Statement:
+            - Effect: Allow
+              Action:
                 - s3:GetObject
                 - s3:PutObject
               Resource: 
                 - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+        - Statement:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
@@ -215,6 +222,38 @@ Resources:
                 - s3:PutObject
               Resource: 
                 - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  ReprocessParallelFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.reprocess_parallel.lambda_handler
+      MemorySize: 1024
+      Timeout: 900
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource:
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource:
+                - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Ref InferenceProfileArn
+                - "arn:aws:bedrock:*::foundation-model/*"
     Metadata:
       BuildMethod: python3.12
 

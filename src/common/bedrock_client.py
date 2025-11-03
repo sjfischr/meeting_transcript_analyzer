@@ -88,7 +88,12 @@ class BedrockClient:
                 response_body = json.loads(response['body'].read())
                 
                 if 'content' in response_body and response_body['content']:
-                    return response_body['content'][0]['text']
+                    response_text = response_body['content'][0].get('text', '')
+                    if not response_text or not response_text.strip():
+                        logger.warning("Bedrock returned empty response text; retrying")
+                        last_error = Exception("Model returned empty response text")
+                        raise last_error
+                    return response_text
                 else:
                     raise Exception("Unexpected response format from Bedrock")
                     
@@ -121,7 +126,7 @@ class BedrockClient:
                 raise Exception(f"AWS SDK error: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error invoking Bedrock: {e}")
-                raise
+                last_error = e
         
         # All retries exhausted
         logger.error(f"Bedrock invocation failed after {max_retries} attempts")
