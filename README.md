@@ -1,4 +1,4 @@
-# GRiST Meeting Pipeline
+# Meeting Transcript Analysis Pipeline
 
 AWS SAM application for processing meeting transcripts using Step Functions, Lambda, and Amazon Bedrock.
 
@@ -136,7 +136,7 @@ S3 Upload → EventBridge → Trigger Lambda → Step Functions:
 
 ```bash
 aws s3api put-bucket-notification-configuration \
-  --bucket mtg-analyzer-grist-2210 \
+  --bucket your-meeting-bucket \
   --notification-configuration '{"EventBridgeConfiguration": {}}'
 ```
 
@@ -168,7 +168,7 @@ python -m pytest tests/
 ```bash
 # Re-run specific pipeline stages locally via CLI
 python scripts/pipeline_cli.py reprocess \
-  --meeting-id grist-2025-10-22 \
+  --meeting-id club-2025-10-22 \
   --skip-calendar
 
 # Export DOCX combining summaries + minutes
@@ -180,7 +180,7 @@ python scripts/export_docx.py \
 
 The CLI uses the same IAM credentials as your AWS CLI profile. It supports targeted retries (minutes-only, summaries-only), per-stage backoff configuration, and a `--skip-calendar` option for faster dry runs. The DOCX exporter relies on `python-docx`; install dependencies with `pip install -r requirements.txt` before running.
 
-## Usage
+### Usage
 
 ### Automatic Processing (Recommended) 🚀
 
@@ -188,10 +188,10 @@ Simply upload a .txt transcript file to S3 - the pipeline starts automatically!
 
 ```bash
 # Upload anywhere in the bucket - auto-organizes by filename
-aws s3 cp meeting_transcript.txt s3://mtg-analyzer-grist-2210/GMT20251022-club-meeting.txt
+aws s3 cp meeting_transcript.txt s3://your-meeting-bucket/GMT20251022-club-meeting.txt
 
 # Or organize manually by date
-aws s3 cp transcript.txt s3://mtg-analyzer-grist-2210/meetings/2025-10-22/transcript.txt
+aws s3 cp transcript.txt s3://your-meeting-bucket/meetings/2025-10-22/transcript.txt
 ```
 
 **What happens next:**
@@ -206,16 +206,16 @@ Start Step Functions execution manually:
 
 ```bash
 STATE_MACHINE_ARN=$(aws cloudformation describe-stacks \
-  --stack-name mtg-analyzer \
+  --stack-name meeting-pipeline \
   --query "Stacks[0].Outputs[?OutputKey=='MeetingPipelineStateMachineArn'].OutputValue" \
   --output text)
 
 aws stepfunctions start-execution \
   --state-machine-arn $STATE_MACHINE_ARN \
   --input '{
-    "meeting_id": "grist-2025-10-22",
+    "meeting_id": "club-2025-10-22",
     "input_key": "GMT20251021-224835_Recording.txt",
-    "output_key": "meetings/grist-2025-10-22/"
+    "output_key": "meetings/club-2025-10-22/"
   }'
 ```
 
@@ -226,20 +226,20 @@ aws stepfunctions start-execution \
 aws stepfunctions list-executions --state-machine-arn $STATE_MACHINE_ARN
 
 # Tail trigger function logs
-sam logs --stack-name mtg-analyzer --name TriggerPipelineFn --tail
+sam logs --stack-name meeting-pipeline --name TriggerPipelineFn --tail
 
 # View specific Lambda logs
-aws logs tail /aws/lambda/mtg-analyzer-PreprocessTurnsFn --follow
+aws logs tail /aws/lambda/meeting-pipeline-PreprocessTurnsFn --follow
 ```
 
 ### Retrieve Results
 
 ```bash
 # List all outputs for a meeting
-aws s3 ls s3://mtg-analyzer-grist-2210/meetings/grist-2025-10-22/
+aws s3 ls s3://your-meeting-bucket/meetings/club-2025-10-22/
 
 # Download specific output
-aws s3 cp s3://mtg-analyzer-grist-2210/meetings/grist-2025-10-22/manifest.json .
+aws s3 cp s3://your-meeting-bucket/meetings/club-2025-10-22/manifest.json .
 ```
 
 ## Development
