@@ -7,12 +7,13 @@ AWS SAM application for processing meeting transcripts using Step Functions, Lam
 This pipeline converts raw meeting transcripts into structured outputs using **intelligent sliding window chunking** for optimal quality:
 
 ### Output Files
-1. **turns.json** - Atomic turns with speaker identification and timestamps
-2. **qa_pairs.json** - Grouped Q&A exchanges and discussions  
-3. **minutes.json** - Formal meeting minutes with action items
-4. **summaries.json** - Executive and detailed summaries
-5. **events.ics** - Calendar events extracted from meeting content
-6. **manifest.json** - Processing metadata and quality metrics
+1. **01_turns.json** - Atomic turns with speaker identification and timestamps
+2. **02_qa_pairs.json** - Grouped Q&A exchanges and discussions  
+3. **03_minutes.json** - Formal meeting minutes with action items
+4. **04_summaries.json** - Executive and detailed summaries
+5. **05_events.ics** - Calendar events extracted from meeting content
+6. **06_manifest.json** - Processing metadata and quality metrics
+7. **meeting_report.docx** *(optional)* - Combined summary + minutes export produced locally with `scripts/export_docx.py`
 
 ### Sliding Window Chunking 🎯
 
@@ -119,6 +120,7 @@ S3 Upload → EventBridge → Trigger Lambda → Step Functions:
 - `REGION` - AWS region (default: us-east-1)  
 - `TIME_ZONE` - Meeting timezone (default: America/New_York)
 - `INFERENCE_PROFILE_ARN` - Bedrock inference profile ARN
+- `SKIP_CALENDAR` - Optional flag (`true`/`false`) to bypass calendar generation in the pipeline reprocessor
 
 ## Setup & Deployment
 
@@ -160,6 +162,23 @@ python test_local.py
 # Run unit tests
 python -m pytest tests/
 ```
+
+### Local Utilities
+
+```bash
+# Re-run specific pipeline stages locally via CLI
+python scripts/pipeline_cli.py reprocess \
+  --meeting-id grist-2025-10-22 \
+  --skip-calendar
+
+# Export DOCX combining summaries + minutes
+python scripts/export_docx.py \
+  outputs/04_summaries.json \
+  outputs/03_minutes.json \
+  meeting_report.docx
+```
+
+The CLI uses the same IAM credentials as your AWS CLI profile. It supports targeted retries (minutes-only, summaries-only), per-stage backoff configuration, and a `--skip-calendar` option for faster dry runs. The DOCX exporter relies on `python-docx`; install dependencies with `pip install -r requirements.txt` before running.
 
 ## Usage
 
