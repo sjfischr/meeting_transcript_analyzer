@@ -57,9 +57,9 @@ def extract_meeting_info(s3_key: str) -> Dict[str, str]:
     }
 
 
-def sanitize_execution_name(meeting_id: str) -> str:
-    """Sanitize meeting_id so it can be used as Step Functions execution name."""
-    sanitized = re.sub(r"[^A-Za-z0-9\-_]+", "-", meeting_id)
+def sanitize_execution_name(raw_name: str) -> str:
+    """Sanitize a string so it can be used as Step Functions execution name."""
+    sanitized = re.sub(r"[^A-Za-z0-9\-_]+", "-", raw_name)
     sanitized = sanitized.strip('-')
     if not sanitized:
         sanitized = f"meeting-{int(datetime.utcnow().timestamp())}"
@@ -122,11 +122,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Start Step Functions execution
         sfn_client = boto3.client('stepfunctions')
-        
-        # Use deterministic execution name based ONLY on meeting_id for idempotency
-        # This prevents duplicate executions if EventBridge sends multiple events
-        # Step Functions will reject duplicate names with ExecutionAlreadyExists error
-        execution_name = sanitize_execution_name(meeting_id)
+
+        # Use meeting_id plus EventBridge event id so retries of the same event dedupe,
+        # but new uploads of the same meeting_id still get a fresh execution name.
+        event_id = event.get('id') or f"evt-{int(datetime.utcnow().timestamp())}"
+        execution_name = sanitize_execution_name(f"{meeting_id}-{event_id[-24:]}")
         
         try:
             response = sfn_client.start_execution(

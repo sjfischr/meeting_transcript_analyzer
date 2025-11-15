@@ -168,5 +168,7 @@ Output valid JSON following the schema specified in the system prompt.
         return {
             'statusCode': 500,
             'error': str(e),
-            'meeting_id': event.get('meeting_id', 'unknown')
+            'meeting_id': event.get('meeting_id', 'unknown'),
+            'chunk_index': event.get('chunk_index'),
+            'output_key': event.get('output_key'),
         }

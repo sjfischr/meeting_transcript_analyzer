@@ -221,13 +221,40 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Read chunk metadata
         metadata_key = event['metadata_key']
         metadata = s3_client.read_json_file(metadata_key)
-        
+
+        chunk_results_raw = event.get('chunk_results', [])
+        failures = [
+            {
+                'chunk_index': info.get('chunk_index'),
+                'status': info.get('statusCode'),
+                'error': info.get('error'),
+                'output_key': info.get('output_key')
+            }
+            for info in chunk_results_raw
+            if info.get('statusCode') != 200
+        ]
+
+        if failures:
+            failure_descriptions = []
+            for failure in failures:
+                description = f"chunk {failure.get('chunk_index')}"
+                if failure.get('status'):
+                    description += f" status={failure['status']}"
+                if failure.get('error'):
+                    description += f" error={failure['error']}"
+                if failure.get('output_key'):
+                    description += f" output={failure['output_key']}"
+                failure_descriptions.append(description)
+            message = "Chunk preprocessing failures detected: " + "; ".join(failure_descriptions)
+            logger.error(message)
+            raise RuntimeError(message)
+
         # Read all chunk results
         chunk_results = []
-        for chunk_info in event['chunk_results']:
+        for chunk_info in chunk_results_raw:
             chunk_index = chunk_info['chunk_index']
             chunk_output_key = chunk_info['output_key']
-            
+
             logger.info(f"Reading chunk {chunk_index} results from {chunk_output_key}")
             chunk_data = s3_client.read_json_file(chunk_output_key)
             chunk_data['chunk_index'] = chunk_index
