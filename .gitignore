@@ -82,4 +82,6 @@ Thumbs.db
 *.temp
 
 # Meeting transcripts
-*.txt
+*.txtdata/segment_analysis_output/
+*.docx
+*.docx

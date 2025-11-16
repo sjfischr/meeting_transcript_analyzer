@@ -16,6 +16,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_INFERENCE_PROFILE_ARN = "arn:aws:bedrock:us-east-1:918221680168:inference-profile/global.anthropic.claude-haiku-4-5-20251001-v1:0"
+
 
 class BedrockClient:
     """Client for interacting with Amazon Bedrock inference."""
@@ -29,7 +31,11 @@ class BedrockClient:
             inference_profile_arn: Bedrock inference profile ARN (defaults to environment variable)
         """
         self.region = region or os.getenv('REGION', 'us-east-1')
-        self.inference_profile_arn = inference_profile_arn or os.getenv('INFERENCE_PROFILE_ARN')
+        self.inference_profile_arn = (
+            inference_profile_arn
+            or os.getenv('INFERENCE_PROFILE_ARN')
+            or DEFAULT_INFERENCE_PROFILE_ARN
+        )
         
         if not self.inference_profile_arn:
             raise ValueError("INFERENCE_PROFILE_ARN environment variable is required")

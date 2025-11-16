@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 from docx import Document as DocumentFactory
 from docx.document import Document
@@ -182,14 +182,56 @@ def render_minutes(document: Document, minutes_json: Dict[str, Any]) -> None:
             add_paragraph(document, str(next_meeting))
 
 
-def build_document(summary_path: Path, minutes_path: Path, output_path: Path) -> None:
+def render_qa_pairs(document: Document, qa_json: Dict[str, Any]) -> None:
+    qa_pairs = qa_json.get("qa_pairs", [])
+    if not qa_pairs:
+        return
+
+    meeting_id = qa_json.get("meeting_id", "Unknown Meeting")
+    add_heading(document, f"QA Exchanges – {meeting_id}", level=1)
+
+    for pair in qa_pairs:
+        group_id = pair.get("group_id")
+        topic = pair.get("topic") or f"QA {group_id}" if group_id else "QA Exchange"
+        add_heading(document, topic, level=2)
+
+        turns = pair.get("turns", [])
+        for turn in turns:
+            role = turn.get("role", "speaker").capitalize()
+            speaker = turn.get("speaker", "Unknown")
+            text = turn.get("text", "")
+            details = f"{role} ({speaker}): {text}" if text else f"{role} ({speaker})"
+            add_paragraph(document, details)
+
+        start_ts = pair.get("start_ts")
+        end_ts = pair.get("end_ts")
+        if start_ts or end_ts:
+            timing_parts: List[str] = []
+            if start_ts:
+                timing_parts.append(f"Start: {start_ts}")
+            if end_ts:
+                timing_parts.append(f"End: {end_ts}")
+            add_paragraph(document, " | ".join(timing_parts))
+
+
+def build_document(
+    summary_path: Path,
+    minutes_path: Path,
+    output_path: Path,
+    qa_path: Optional[Path] = None,
+) -> None:
     summary_data = load_json(summary_path)
     minutes_data = load_json(minutes_path)
+    qa_data = load_json(qa_path) if qa_path else None
 
     document = DocumentFactory()
     ensure_custom_styles(document)
 
     render_summary(document, summary_data)
+
+    if qa_data:
+        document.add_page_break()
+        render_qa_pairs(document, qa_data)
 
     document.add_page_break()
 
@@ -207,12 +249,18 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Output DOCX filename (e.g., meeting_report.docx)",
     )
+    parser.add_argument(
+        "--qa-json",
+        type=Path,
+        default=None,
+        help="Optional path to 02_qa_pairs.json for inclusion in the report",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    build_document(args.summary_json, args.minutes_json, args.output_docx)
+    build_document(args.summary_json, args.minutes_json, args.output_docx, args.qa_json)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ This pipeline converts raw meeting transcripts into structured outputs using **i
 4. **04_summaries.json** - Executive and detailed summaries
 5. **05_events.ics** - Calendar events extracted from meeting content
 6. **06_manifest.json** - Processing metadata and quality metrics
-7. **meeting_report.docx** *(optional)* - Combined summary + minutes export produced locally with `scripts/export_docx.py`
+7. **meeting_report.docx** *(optional)* - Combined summary + minutes export produced locally with `scripts/export_docx.py` (can now embed QA exchanges)
 
 ### Sliding Window Chunking 🎯
 
@@ -35,7 +35,7 @@ Chunk 1: [===============]
 - **AWS SAM** - Infrastructure as Code
 - **Step Functions** - Orchestration workflow
 - **Lambda** - Processing functions (Python 3.12)
-- **Amazon Bedrock** - LLM inference using Claude Sonnet
+- **Amazon Bedrock** - LLM inference using Claude Haiku 4.5 (Sonnet available via override)
 - **S3** - Storage for inputs and outputs
 - **EventBridge** - Automatic trigger on file upload
 
@@ -119,7 +119,9 @@ S3 Upload → EventBridge → Trigger Lambda → Step Functions:
 - `BUCKET` - S3 bucket for storing files
 - `REGION` - AWS region (default: us-east-1)  
 - `TIME_ZONE` - Meeting timezone (default: America/New_York)
-- `INFERENCE_PROFILE_ARN` - Bedrock inference profile ARN
+- `INFERENCE_PROFILE_ARN` - Bedrock inference profile ARN (defaults to Claude Haiku 4.5 when unset)
+- `SEGMENT_ANALYSIS_MODEL_ID` / `BEDROCK_MODEL_ID` - Override the default Claude Haiku 4.5 model ID for local or Lambda runs
+- `MOCK_BEDROCK` - When truthy, enables deterministic offline analysis instead of calling Bedrock
 - `SKIP_CALENDAR` - Optional flag (`true`/`false`) to bypass calendar generation in the pipeline reprocessor
 
 ## Setup & Deployment
@@ -175,10 +177,35 @@ python scripts/pipeline_cli.py reprocess \
 python scripts/export_docx.py \
   outputs/04_summaries.json \
   outputs/03_minutes.json \
-  meeting_report.docx
+  meeting_report.docx \
+  --qa-json outputs/02_qa_pairs.json
+
+# Analyze a transcript locally (mock mode shown; see below for details)
+python scripts/run_segment_analysis_local.py \
+  data/segment_analysis_output/November_mtg_transcribe.txt \
+  --mock-llm
 ```
 
 The CLI uses the same IAM credentials as your AWS CLI profile. It supports targeted retries (minutes-only, summaries-only), per-stage backoff configuration, and a `--skip-calendar` option for faster dry runs. The DOCX exporter relies on `python-docx`; install dependencies with `pip install -r requirements.txt` before running.
+
+### Local Transcript Analysis
+
+`scripts/run_segment_analysis_local.py` now supports both raw text transcripts and full AWS Transcribe JSON exports:
+
+- **Transcribe-aware turn parsing** – The loader consumes `results.items` and aligns tokens with `speaker_labels.segments`, yielding accurate speaker continuity and timestamps straight from the transcription service.
+- **Mock mode** – Supply `--mock-llm` (or set `MOCK_BEDROCK=1`) to generate deterministic heuristic summaries without invoking Bedrock. This is ideal for CI, credential-free environments, or quick regression checks.
+- **Bedrock execution** – When run without `--mock-llm`, the script calls Bedrock using the default Claude Haiku 4.5 profile. Provide `INFERENCE_PROFILE_ARN` or `SEGMENT_ANALYSIS_MODEL_ID` to target a different model.
+- **Artifacts** – The command writes the same suite of JSON/ICS outputs used by the Step Functions pipeline into `segment_analysis_output/` for easy inspection. These paths are ignored by Git.
+
+Examples:
+
+```bash
+# Offline heuristic run
+python scripts/run_segment_analysis_local.py data/November_mtg.txt --mock-llm
+
+# Full run against an AWS Transcribe export
+python scripts/run_segment_analysis_local.py data/segment_analysis_output/November_mtg_transcribe.txt
+```
 
 ### Usage
 
